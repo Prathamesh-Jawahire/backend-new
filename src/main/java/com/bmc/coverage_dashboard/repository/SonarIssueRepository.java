@@ -15,4 +15,8 @@ public interface SonarIssueRepository
     SonarIssueEntity
     findTopByIssueKeyOrderByIdDesc(
             String issueKey);
+    List<SonarIssueEntity>
+    findByBuildIdAndStatus(
+            Long buildId,
+            String status);
 }

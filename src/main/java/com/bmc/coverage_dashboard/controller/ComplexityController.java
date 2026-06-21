@@ -1,8 +1,7 @@
 package com.bmc.coverage_dashboard.controller;
 
-import com.bmc.coverage_dashboard.dto.ComplexityUploadRequest;
+import com.bmc.coverage_dashboard.dto.Upload.ComplexityUploadRequest;
 import com.bmc.coverage_dashboard.entity.ComplexityResultEntity;
-import com.bmc.coverage_dashboard.repository.ComplexityResultRepository;
 import com.bmc.coverage_dashboard.service.ComplexityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;

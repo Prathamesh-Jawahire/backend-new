@@ -1,17 +1,17 @@
 package com.bmc.coverage_dashboard.service.impl;
 
-import com.bmc.coverage_dashboard.dto.BuildDto;
-import com.bmc.coverage_dashboard.dto.SonarSummaryDto;
+import com.bmc.coverage_dashboard.dto.Upload.BuildDto;
+import com.bmc.coverage_dashboard.dto.Upload.OllamaAnalysisUploadDto;
+import com.bmc.coverage_dashboard.dto.Upload.SonarSummaryDto;
+import com.bmc.coverage_dashboard.dto.Upload.UnifiedCoverageReportDto;
 import com.bmc.coverage_dashboard.entity.*;
-import com.bmc.coverage_dashboard.dto.UnifiedCoverageReportDto;
-import com.bmc.coverage_dashboard.dto.QualityGateConditionDto;
 import com.bmc.coverage_dashboard.repository.*;
 import com.bmc.coverage_dashboard.service.BuildUploadService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +35,9 @@ public class BuildUploadServiceImpl implements BuildUploadService {
     private final RawReportRepository rawReportRepository;
 
     private final SonarIssueRepository sonarIssueRepository;
+
+    private final OllamaIssueRepository
+            ollamaIssueRepository;
 
 
 
@@ -195,6 +198,12 @@ public class BuildUploadServiceImpl implements BuildUploadService {
                                     summaryDto.getDuplicatedBlocks())
                             .duplicatedLinesDensity(
                                     summaryDto.getDuplicatedLinesDensity())
+                            .criticalIssues(
+                                    Double.valueOf(summaryDto.getCriticalIssues()))
+                            .majorIssues(
+                                    Double.valueOf(summaryDto.getMajorIssues()))
+                            .minorIssues(
+                                    Double.valueOf(summaryDto.getMinorIssues()))
                             .build(savedBuild)
                             .build();
 
@@ -288,5 +297,81 @@ public class BuildUploadServiceImpl implements BuildUploadService {
         }
         System.out.println(
                 "Coverage report saved successfully.");
+    }
+    @Override
+    @Transactional
+    public void processOllamaAnalysis(
+            OllamaAnalysisUploadDto dto) {
+
+        ollamaIssueRepository.deleteAll();
+
+        BuildEntity latestBuild =
+                buildRepository
+                        .findTopByOrderByIdDesc();
+
+        if (latestBuild == null) {
+
+            throw new RuntimeException(
+                    "No build found");
+        }
+
+        dto.getIssues()
+                .forEach(issue -> {
+
+                    try {
+
+                        String rootCauseJson =
+                                objectMapper.writeValueAsString(
+                                        issue.getRootCause());
+
+                        String exactFixJson =
+                                objectMapper.writeValueAsString(
+                                        issue.getExactFix());
+
+                        String suggestedCodeJson =
+                                objectMapper.writeValueAsString(
+                                        issue.getSuggestedCode());
+
+                        String estimatedImpactJson =
+                                objectMapper.writeValueAsString(
+                                        issue.getEstimatedImpact());
+                        OllamaIssueEntity entity =
+                                OllamaIssueEntity
+                                        .builder()
+                                        .build(
+                                                latestBuild)
+                                        .issueKey(
+                                                issue.getIssueKey())
+                                        .ruleKey(
+                                                issue.getRule())
+                                        .issueType(
+                                                issue.getType())
+                                        .severity(
+                                                issue.getSeverity())
+                                        .filePath(
+                                                issue.getFile())
+                                        .lineNumber(
+                                                issue.getLine())
+                                        .rootCause(
+                                                rootCauseJson)
+                                        .exactFix(
+                                                exactFixJson)
+                                        .suggestedCode(
+                                                suggestedCodeJson)
+                                        .estimatedImpact(
+                                                estimatedImpactJson)
+                                        .build();
+
+                        ollamaIssueRepository
+                                .save(entity);
+
+                    } catch (Exception e) {
+
+                        throw new RuntimeException(
+                                "Failed to save Ollama issue: "
+                                        + issue.getIssueKey(),
+                                e);
+                    }
+                });
     }
 }

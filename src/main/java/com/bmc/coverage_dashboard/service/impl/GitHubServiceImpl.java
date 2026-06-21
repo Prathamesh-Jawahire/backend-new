@@ -152,11 +152,18 @@ public class GitHubServiceImpl
          * Java Mapping
          *
          * JSON:
+         * java-app/...
          * src/main/java/com/ecoomerce/...
          *
          * GitHub:
          * java-repo/Java/JavaFullstackEcommerce/src/main/java/com/ecoomerce/...
          */
+        if (filePath.startsWith("java-app/")) {
+            return filePath.replaceFirst(
+                    "java-app/",
+                    "java-repo/");
+        }
+
         if (filePath.startsWith(
                 "src/main/java/")) {
 

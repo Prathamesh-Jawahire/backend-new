@@ -1,11 +1,12 @@
 package com.bmc.coverage_dashboard.controller;
 
-import com.bmc.coverage_dashboard.dto.*;
+import com.bmc.coverage_dashboard.dto.Response.*;
+import com.bmc.coverage_dashboard.dto.Upload.AiInsightsRequest;
 import com.bmc.coverage_dashboard.service.DashboardService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import com.bmc.coverage_dashboard.dto.ModuleCoverageResponse;
+
 import java.util.List;
 @RestController
 @RequestMapping("/api/dashboard")
@@ -130,6 +131,25 @@ public class DashboardController {
     public RiskRatingResponse getRiskRating() {
 
         return dashboardService.getRiskRating();
+    }
+    @GetMapping(
+            "/ollama-issues")
+    public List<OllamaIssueResponse>
+    getOllamaIssues() {
+
+        return dashboardService
+                .getOllamaIssues();
+    }
+    @GetMapping(
+            "/ollama-issues/{issueKey}")
+    public OllamaIssueResponse
+    getOllamaIssue(
+            @PathVariable
+            String issueKey) {
+
+        return dashboardService
+                .getOllamaIssue(
+                        issueKey);
     }
 
 }

@@ -10,7 +10,9 @@ public interface ModuleCoverageRepository
         extends JpaRepository<ModuleCoverageEntity, Long> {
 
     List<ModuleCoverageEntity> findAllByOrderByLineCoverageDesc();
-    Optional<ModuleCoverageEntity> findById(Long id);
+    List<ModuleCoverageEntity>
+    findByBuildId(
+            Long buildId);
     Integer countByRiskLevel(String riskLevel);
 
     Integer countByLineCoverageLessThan(Double coverage);

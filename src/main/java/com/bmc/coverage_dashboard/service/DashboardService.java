@@ -1,6 +1,7 @@
 package com.bmc.coverage_dashboard.service;
 
-import com.bmc.coverage_dashboard.dto.*;
+import com.bmc.coverage_dashboard.dto.Response.*;
+import com.bmc.coverage_dashboard.dto.Upload.AiInsightsRequest;
 
 import java.util.List;
 
@@ -42,4 +43,10 @@ public interface DashboardService {
             AiInsightsRequest request);
 
     RiskRatingResponse getRiskRating();
+    List<OllamaIssueResponse>
+    getOllamaIssues();
+
+    OllamaIssueResponse
+    getOllamaIssue(
+            String issueKey);
 }

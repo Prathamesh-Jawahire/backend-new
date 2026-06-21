@@ -1,7 +1,7 @@
 package com.bmc.coverage_dashboard.service.impl;
 
-import com.bmc.coverage_dashboard.dto.LatestBuildResponse;
-import com.bmc.coverage_dashboard.dto.*;
+import com.bmc.coverage_dashboard.dto.Response.*;
+import com.bmc.coverage_dashboard.dto.Upload.AiInsightsRequest;
 import com.bmc.coverage_dashboard.entity.*;
 import com.bmc.coverage_dashboard.repository.*;
 import com.bmc.coverage_dashboard.service.DashboardService;
@@ -11,8 +11,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Optional;
 
 
 @Service
@@ -28,6 +30,10 @@ public class DashboardServiceImpl
     private final GitHubService gitHubService;
     private final AiRiskAnalysisRepository
             aiRiskAnalysisRepository;
+    private final OllamaIssueRepository
+            ollamaIssueRepository;
+    private final AiInsightsRepository
+            aiInsightsRepository;
 
 
     private final ObjectMapper
@@ -74,14 +80,30 @@ public class DashboardServiceImpl
     }
 
     @Override
-    public List<ModuleCoverageResponse> getModules() {
+    public List<ModuleCoverageResponse>
+    getModules() {
 
-        return moduleCoverageRepository
-                .findAllByOrderByLineCoverageDesc()
-                .stream()
+        BuildEntity latestBuild =
+                buildRepository
+                        .findTopByOrderByIdDesc();
+
+        if (latestBuild == null) {
+
+            return List.of();
+        }
+
+        List<ModuleCoverageEntity>
+                modules =
+                moduleCoverageRepository
+                        .findByBuildId(
+                                latestBuild.getId());
+
+        return modules.stream()
                 .map(module ->
-                        ModuleCoverageResponse.builder()
-                                .id(module.getId())
+                        ModuleCoverageResponse
+                                .builder()
+                                .id(
+                                        module.getId())
                                 .moduleName(
                                         module.getModuleName())
                                 .language(
@@ -210,6 +232,12 @@ public class DashboardServiceImpl
                         sonar.getDuplicatedBlocks())
                 .duplicatedLinesDensity(
                         sonar.getDuplicatedLinesDensity())
+                .criticalIssues(
+                        sonar.getCriticalIssues())
+                .majorIssues(
+                        sonar.getMajorIssues())
+                .minorIssues(
+                        sonar.getMinorIssues())
                 .build();
     }
 
@@ -579,28 +607,42 @@ public class DashboardServiceImpl
     public AiInsightsResponse
     getAiInsights() {
 
+        BuildEntity latestBuild =
+                buildRepository
+                        .findTopByOrderByIdDesc();
+
+        if (latestBuild == null) {
+
+            return new AiInsightsResponse();
+        }
+
+        Optional<AiInsightsEntity>
+                entityOpt =
+                aiInsightsRepository
+                        .findTopByBuildIdOrderByIdDesc(
+                                latestBuild.getId());
+
+        if (entityOpt.isEmpty()) {
+
+            return new AiInsightsResponse();
+        }
+
         try {
 
-            AiRiskAnalysisEntity analysis =
-                    aiRiskAnalysisRepository
-                            .findTopByOrderByIdDesc();
-
-            if (analysis == null) {
-                return new AiInsightsResponse();
-            }
-
-            return objectMapper.readValue(
-                    analysis.getAnalysisJson(),
-                    AiInsightsResponse.class);
+            return objectMapper
+                    .readValue(
+                            entityOpt
+                                    .get()
+                                    .getAnalysisJson(),
+                            AiInsightsResponse.class);
 
         } catch (Exception e) {
 
             throw new RuntimeException(
-                    "Failed to load AI insights",
+                    "Failed to parse AI insights",
                     e);
         }
     }
-
     @Override
     public AiMetricsResponse getAiMetrics() {
 
@@ -700,34 +742,36 @@ public class DashboardServiceImpl
     }
 
     @Override
+    @Transactional
     public void saveAiInsights(
             AiInsightsRequest request) {
 
+        BuildEntity latestBuild =
+                buildRepository
+                        .findTopByOrderByIdDesc();
+
+        if (latestBuild == null) {
+
+            throw new RuntimeException(
+                    "No build found");
+        }
+
         try {
 
-            BuildEntity latestBuild =
-                    buildRepository
-                            .findTopByOrderByIdDesc();
-
-            if (latestBuild == null) {
-
-                throw new RuntimeException(
-                        "No build found");
-            }
-
-            String json =
-                    objectMapper.writeValueAsString(
-                            request);
-
-            AiRiskAnalysisEntity entity =
-                    AiRiskAnalysisEntity.builder()
-                            .analysisJson(json)
-                            .createdAt(
-                                    java.time.LocalDateTime.now())
+            AiInsightsEntity entity =
+                    AiInsightsEntity
+                            .builder()
                             .build(latestBuild)
+                            .analysisJson(
+                                    objectMapper
+                                            .writeValueAsString(
+                                                    request))
+                            .createdAt(
+                                    LocalDateTime.now())
                             .build();
 
-            aiRiskAnalysisRepository.save(entity);
+            aiInsightsRepository
+                    .save(entity);
 
         } catch (Exception e) {
 
@@ -739,26 +783,43 @@ public class DashboardServiceImpl
     @Override
     public RiskRatingResponse getRiskRating() {
 
-        List<SonarIssueEntity> issues = sonarIssueRepository.findAll();
+        BuildEntity latestBuild =
+                buildRepository
+                        .findTopByOrderByIdDesc();
+
+        if (latestBuild == null) {
+
+            return RiskRatingResponse.builder()
+                    .riskRating("LOW")
+                    .weightedScore((double) 0L)
+                    .criticalCount(0)
+                    .vulnerabilityCount(0)
+                    .color("var(--google-green-600)")
+                    .build();
+        }
+
+        List<SonarIssueEntity> issues =
+                sonarIssueRepository
+                        .findByBuildIdAndStatus(
+                                latestBuild.getId(),
+                                "OPEN");
 
         double totalScore = 0;
 
         int criticalCount = 0;
         int vulnerabilityCount = 0;
+
         boolean blockerVulnerability = false;
-        boolean criticalVulnerability = false;
 
         for (SonarIssueEntity issue : issues) {
 
-            String severity =
-                    issue.getSeverity() == null
-                            ? "INFO"
-                            : issue.getSeverity().toUpperCase();
+            String severity = issue.getSeverity() == null
+                    ? "INFO"
+                    : issue.getSeverity().toUpperCase();
 
-            String type =
-                    issue.getType() == null
-                            ? "CODE_SMELL"
-                            : issue.getType().toUpperCase();
+            String type = issue.getType() == null
+                    ? "CODE_SMELL"
+                    : issue.getType().toUpperCase();
 
             int severityWeight;
 
@@ -788,15 +849,12 @@ public class DashboardServiceImpl
 
             switch (type) {
                 case "VULNERABILITY":
+
                     typeMultiplier = 1.5;
                     vulnerabilityCount++;
 
                     if ("BLOCKER".equals(severity)) {
                         blockerVulnerability = true;
-                    }
-
-                    if ("CRITICAL".equals(severity)) {
-                        criticalVulnerability = true;
                     }
                     break;
 
@@ -814,28 +872,21 @@ public class DashboardServiceImpl
         String riskRating;
         String color;
 
-        // Security override
-        if (blockerVulnerability) {
+        if (blockerVulnerability
+                || criticalCount >= 100
+                || vulnerabilityCount >= 10) {
 
             riskRating = "CRITICAL";
             color = "var(--google-red-800)";
 
-        } else if (criticalVulnerability) {
-
-            riskRating = "HIGH";
-            color = "var(--google-red-700)";
-
-        } else if (criticalCount >= 100 || vulnerabilityCount >= 10) {
-
-            riskRating = "CRITICAL";
-            color = "var(--google-red-800)";
-
-        } else if (criticalCount >= 50 || vulnerabilityCount >= 3) {
+        } else if (criticalCount >= 50
+                || vulnerabilityCount >= 3) {
 
             riskRating = "HIGH";
             color = "var(--google-red-600)";
 
-        } else if (criticalCount >= 10 || totalScore >= 500) {
+        } else if (criticalCount >= 10
+                || totalScore >= 500) {
 
             riskRating = "MEDIUM";
             color = "var(--bmc-orange)";
@@ -852,6 +903,115 @@ public class DashboardServiceImpl
                 .criticalCount(criticalCount)
                 .vulnerabilityCount(vulnerabilityCount)
                 .color(color)
+                .build();
+    }
+    @Override
+    public List<OllamaIssueResponse>
+    getOllamaIssues() {
+
+        try {
+
+            BuildEntity latestBuild =
+                    buildRepository
+                            .findTopByOrderByIdDesc();
+
+            System.out.println(
+                    "Latest Build = "
+                            + latestBuild.getId());
+
+            List<OllamaIssueEntity> issues =
+                    ollamaIssueRepository
+                            .findByBuildId(
+                                    latestBuild.getId());
+
+            System.out.println(
+                    "Issue Count = "
+                            + issues.size());
+
+            return issues.stream()
+                    .map(issue ->
+                            OllamaIssueResponse
+                                    .builder()
+                                    .issueKey(
+                                            issue.getIssueKey())
+                                    .rule(
+                                            issue.getRuleKey())
+                                    .severity(
+                                            issue.getSeverity())
+                                    .type(
+                                            issue.getIssueType())
+                                    .file(
+                                            issue.getFilePath())
+                                    .line(
+                                            issue.getLineNumber())
+                                    .rootCause(
+                                            issue.getRootCause())
+                                    .exactFix(
+                                            issue.getExactFix())
+                                    .suggestedCode(
+                                            issue.getSuggestedCode())
+                                    .estimatedImpact(
+                                            issue.getEstimatedImpact())
+                                    .build())
+                    .toList();
+
+        } catch (Exception e) {
+
+            throw new RuntimeException(
+                    "Failed to process issue: "
+
+                    ,e);
+        }
+    }
+    @Override
+    public OllamaIssueResponse
+    getOllamaIssue(
+            String issueKey) {
+
+
+
+        BuildEntity latestBuild =
+                buildRepository
+                        .findTopByOrderByIdDesc();
+
+        if (latestBuild == null) {
+
+            throw new RuntimeException(
+                    "Build not found");
+        }
+
+        OllamaIssueEntity issue =
+                ollamaIssueRepository
+                        .findByIssueKeyAndBuildId(
+                                issueKey,
+                                latestBuild.getId())
+                        .orElseThrow(
+                                () ->
+                                        new RuntimeException(
+                                                "Issue not found"));
+
+        return OllamaIssueResponse
+                .builder()
+                .issueKey(
+                        issue.getIssueKey())
+                .rule(
+                        issue.getRuleKey())
+                .severity(
+                        issue.getSeverity())
+                .type(
+                        issue.getIssueType())
+                .file(
+                        issue.getFilePath())
+                .line(
+                        issue.getLineNumber())
+                .rootCause(
+                        issue.getRootCause())
+                .exactFix(
+                        issue.getExactFix())
+                .suggestedCode(
+                        issue.getSuggestedCode())
+                .estimatedImpact(
+                        issue.getEstimatedImpact())
                 .build();
     }
    }

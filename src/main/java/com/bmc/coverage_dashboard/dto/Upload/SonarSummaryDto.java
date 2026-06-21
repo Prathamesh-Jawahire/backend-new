@@ -1,20 +1,13 @@
-package com.bmc.coverage_dashboard.entity;
+package com.bmc.coverage_dashboard.dto.Upload;
 
-import jakarta.persistence.*;
 import lombok.*;
 
-@Entity
-@Table(name = "sonar_metrics", schema = "coverage")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class SonarMetricsEntity {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class SonarSummaryDto {
 
     private Integer bugs;
 
@@ -38,13 +31,13 @@ public class SonarMetricsEntity {
 
     private Double duplicatedLinesDensity;
 
-    private Double criticalIssues;
+    private Integer criticalIssues;
 
-    private Double majorIssues;
+    private Integer majorIssues;
 
-    private Double minorIssues;
+    private Integer minorIssues;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "build_id")
-    private BuildEntity build;
+    private String lastAnalysisDate;
+
+    
 }
