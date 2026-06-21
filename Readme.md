@@ -472,6 +472,3 @@ BMC Software Internship Project
 
 Unified Code Coverage Dashboard
 
-Developed by:
-
-Prathamesh Jawahire
